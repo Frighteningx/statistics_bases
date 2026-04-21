@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard Operacional - Contact Center (V2)</title>
+    <title>Dashboard Operacional - Contact Center (V3)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
@@ -37,7 +37,7 @@
 
     <section class="max-w-7xl mx-auto card p-6 mb-8 grid grid-cols-1 md:grid-cols-5 gap-4">
         <div class="flex flex-col md:col-span-2">
-            <label class="text-xs font-bold text-gray-400 mb-1">RANGO DE FECHAS</label>
+            <label class="text-xs font-bold text-gray-400 mb-1">RANGO DE FECHAS DE CARGA</label>
             <div class="flex gap-2">
                 <input type="date" id="dateStart" class="filter-input text-sm">
                 <input type="date" id="dateEnd" class="filter-input text-sm">
@@ -75,7 +75,7 @@
             <h2 id="kpiTotalBases" class="text-3xl font-bold text-gray-800">0</h2>
         </div>
         <div class="card p-6 border-l-4 border-company-green">
-            <p class="text-gray-500 text-xs font-bold uppercase">Registros Totales</p>
+            <p class="text-gray-500 text-xs font-bold uppercase">Pacientes/Registros Totales</p>
             <h2 id="kpiTotalRegistros" class="text-3xl font-bold text-gray-800">0</h2>
         </div>
         <div class="card p-6 border-l-4 border-blue-400">
@@ -91,14 +91,14 @@
     <section class="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-8 mb-8">
         <div class="card p-6 md:col-span-2">
             <div class="flex justify-between items-center mb-4">
-                <h3 class="text-lg font-bold text-gray-700 font-semibold">Tendencia de Cargas</h3>
+                <h3 class="text-lg font-bold text-gray-700 font-semibold">Ranking de Cargas (Mayor a Menor)</h3>
                 <select id="chartGroupMode" class="filter-input text-xs w-auto py-1" onchange="processData()">
                     <option value="day">Por Día</option>
                     <option value="week">Por Semana</option>
                     <option value="month">Por Mes</option>
                 </select>
             </div>
-            <canvas id="chartCargas" height="100"></canvas>
+            <canvas id="chartCargas" height="150"></canvas>
         </div>
         <div class="card p-6">
             <h3 class="text-lg font-bold text-gray-700 mb-4 font-semibold">Cargas por Especialidad</h3>
@@ -115,7 +115,7 @@
                 <thead class="bg-green-50 text-company-green text-xs uppercase font-bold">
                     <tr>
                         <th class="px-6 py-4">Prioridad</th>
-                        <th class="px-6 py-4">Fecha</th>
+                        <th class="px-6 py-4">Fecha Carga</th>
                         <th class="px-6 py-4">Especialidad</th>
                         <th class="px-6 py-4">Nombre Carga</th>
                         <th class="px-6 py-4">Tipo Carga</th>
@@ -141,15 +141,23 @@
         document.addEventListener('DOMContentLoaded', () => {
             initCharts();
             setupEventListeners();
-            // Descomenta fetchData() cuando tengas la URL real
+            // Descomenta fetchData() cuando tengas la URL real conectada al Sheets
             // fetchData(); 
-            loadMockData(); // Genera datos de prueba incluyendo los nuevos campos
+            loadMockData(); // Genera datos de prueba
         });
 
         function setupEventListeners() {
             ['dateStart', 'dateEnd', 'filterTipoCarga', 'filterEstado', 'filterEspecialidad'].forEach(id => {
                 document.getElementById(id).addEventListener('change', processData);
             });
+        }
+
+        // PARCHE ZONA HORARIA: Normalizamos la fecha asumiendo que es la fecha pura del calendario
+        function parseDateSafe(dateStr) {
+            const d = new Date(dateStr);
+            if (isNaN(d.getTime())) return new Date(); // Fallback si viene vacía
+            // Sumamos el offset de la zona horaria para forzarla al mediodía local y evitar que salte de día
+            return new Date(d.getTime() + Math.abs(d.getTimezoneOffset() * 60000));
         }
 
         async function fetchData() {
@@ -176,9 +184,9 @@
 
         function cleanData(data) {
             return data.filter(row => row['ID']).map(row => {
-                // Validación Tipo de Carga
-                let tipoCarga = (row['tipo de carga'] || '').trim();
-                let nombreTipo = (row['Nombre tipo'] || '').toUpperCase();
+                // Validación Tipo de Carga cruzada con Nombre Tipo
+                let tipoCarga = (row['tipo de carga'] || '').toString().trim();
+                let nombreTipo = (row['Nombre tipo'] || '').toString().toUpperCase();
                 if (!tipoCarga) {
                     tipoCarga = nombreTipo.includes('IA') ? 'IA' : 'Manual';
                 }
@@ -186,14 +194,15 @@
                 return {
                     ...row,
                     tipoCarga: tipoCarga,
-                    fecha: new Date(row['Fecha carga']),
+                    // Uso de la función segura para evitar que "no calzen los días"
+                    fecha: parseDateSafe(row['Fecha carga']),
                     cantidad: parseInt(row['cantidad de registros']) || 0,
                     avance: parseFloat(row['Avance']) || 0,
                     efectividad: parseFloat(row['Efectividad']) || 0,
                     contactabilidad: parseFloat(row['Contactabilidad']) || 0,
-                    estado: (row['estado'] || 'nueva').toLowerCase(),
+                    estado: (row['estado'] || 'nueva').toString().toLowerCase(),
                     prioridadNombre: row['Nombre prioridad'] || 'Sin Prioridad',
-                    prioridadPeso: parseInt(row['peso prioridad']) || 99, // 99 para los sin peso (al final)
+                    prioridadPeso: parseInt(row['peso prioridad']) || 99,
                     especialidad: row['Especialidad'] || 'General'
                 };
             });
@@ -203,7 +212,6 @@
             const especialidades = [...new Set(data.map(item => item.especialidad))].sort();
             const selectEsp = document.getElementById('filterEspecialidad');
             
-            // Limpiar opciones previas manteniendo "Todas"
             selectEsp.innerHTML = '<option value="ALL">Todas</option>';
             
             especialidades.forEach(e => {
@@ -215,14 +223,18 @@
         }
 
         function processData() {
-            const start = document.getElementById('dateStart').value;
-            const end = document.getElementById('dateEnd').value;
+            const startStr = document.getElementById('dateStart').value;
+            const endStr = document.getElementById('dateEnd').value;
             const fCarga = document.getElementById('filterTipoCarga').value;
             const fEstado = document.getElementById('filterEstado').value;
             const fEsp = document.getElementById('filterEspecialidad').value;
 
+            // Ajuste de filtros de fecha considerando inicio del día y final del día local
+            const startDate = startStr ? new Date(startStr + 'T00:00:00') : null;
+            const endDate = endStr ? new Date(endStr + 'T23:59:59') : null;
+
             let filtered = rawData.filter(row => {
-                const matchDate = (!start || row.fecha >= new Date(start)) && (!end || row.fecha <= new Date(end));
+                const matchDate = (!startDate || row.fecha >= startDate) && (!endDate || row.fecha <= endDate);
                 const matchCarga = fCarga === 'ALL' || row.tipoCarga === fCarga;
                 const matchEstado = fEstado === 'ALL' || row.estado === fEstado;
                 const matchEsp = fEsp === 'ALL' || row.especialidad === fEsp;
@@ -230,14 +242,13 @@
                 return matchDate && matchCarga && matchEstado && matchEsp;
             });
 
-            // Ordenar por Peso de Prioridad (ascendente: 1 es más importante)
+            // Ordenar tabla siempre dando enfásis al peso de la prioridad
             filtered.sort((a, b) => a.prioridadPeso - b.prioridadPeso);
 
             updateDashboard(filtered);
         }
 
         function updateDashboard(data) {
-            // KPIs
             const totalRegistros = data.reduce((sum, row) => sum + row.cantidad, 0);
             const avgEfectividad = data.length > 0 ? (data.reduce((sum, row) => sum + row.efectividad, 0) / data.length).toFixed(1) : 0;
             const avgContact = data.length > 0 ? (data.reduce((sum, row) => sum + row.contactabilidad, 0) / data.length).toFixed(1) : 0;
@@ -247,7 +258,6 @@
             document.getElementById('kpiAvgEfectividad').innerText = avgEfectividad + '%';
             document.getElementById('kpiAvgContact').innerText = avgContact + '%';
 
-            // Tabla
             const tableBody = document.getElementById('tableBody');
             tableBody.innerHTML = '';
             
@@ -260,6 +270,8 @@
 
             data.forEach(row => {
                 const badgeColor = estadoColors[row.estado] || 'bg-gray-100 text-gray-800';
+                // Formateamos la fecha en formato chileno/latino tradicional DD/MM/YYYY
+                const fechaFormato = row.fecha.toLocaleDateString('es-CL');
                 
                 tableBody.innerHTML += `
                     <tr class="hover:bg-green-50 transition">
@@ -267,7 +279,7 @@
                             <span class="font-bold text-gray-800">${row.prioridadPeso}</span> 
                             <span class="text-xs text-gray-500">(${row.prioridadNombre})</span>
                         </td>
-                        <td class="px-6 py-4 font-medium text-gray-700">${row.fecha.toLocaleDateString()}</td>
+                        <td class="px-6 py-4 font-medium text-gray-700">${fechaFormato}</td>
                         <td class="px-6 py-4 text-company-green font-semibold">${row.especialidad}</td>
                         <td class="px-6 py-4">${row['Nombre carga']}</td>
                         <td class="px-6 py-4 font-semibold ${row.tipoCarga === 'IA' ? 'text-purple-600' : 'text-blue-600'}">${row.tipoCarga}</td>
@@ -294,9 +306,25 @@
         function initCharts() {
             const ctx1 = document.getElementById('chartCargas').getContext('2d');
             chartCargas = new Chart(ctx1, {
-                type: 'bar', // Cambiado a barras para mejor visualización temporal
-                data: { labels: [], datasets: [{ label: 'Bases Cargadas', data: [], backgroundColor: '#4CAF50', borderRadius: 4 }] },
-                options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+                type: 'bar',
+                data: { 
+                    labels: [], 
+                    datasets: [{ 
+                        label: 'Cant. de Bases Cargadas', 
+                        data: [], 
+                        backgroundColor: '#4CAF50', 
+                        borderRadius: 4 
+                    }] 
+                },
+                options: { 
+                    indexAxis: 'y', // AQUÍ ESTÁ LA MAGIA: Vuelve el gráfico horizontal para leer bien las fechas
+                    responsive: true, 
+                    plugins: { legend: { display: false } }, 
+                    scales: { 
+                        x: { beginAtZero: true, ticks: { precision: 0 } },
+                        y: { ticks: { font: { weight: 'bold' } } }
+                    } 
+                }
             });
 
             const ctx2 = document.getElementById('chartEspecialidad').getContext('2d');
@@ -317,22 +345,25 @@
         function updateCharts(data) {
             const groupMode = document.getElementById('chartGroupMode').value;
             
-            // Agrupación de Línea de Tiempo
+            // Agrupación para Gráfico Principal (Fechas)
             const timeData = {};
             data.forEach(row => {
                 let key;
                 if (groupMode === 'day') {
-                    key = row.fecha.toLocaleDateString();
+                    key = row.fecha.toLocaleDateString('es-CL'); // Fuerza formato DD-MM-YYYY
                 } else if (groupMode === 'week') {
-                    key = `Sem ${getWeekNumber(row.fecha)} - ${row.fecha.getFullYear()}`;
+                    key = `Semana ${getWeekNumber(row.fecha)} - ${row.fecha.getFullYear()}`;
                 } else {
-                    key = `${row.fecha.toLocaleString('default', { month: 'short' })} ${row.fecha.getFullYear()}`;
+                    key = `${row.fecha.toLocaleString('es-CL', { month: 'short' })} ${row.fecha.getFullYear()}`.toUpperCase();
                 }
                 timeData[key] = (timeData[key] || 0) + 1;
             });
 
-            chartCargas.data.labels = Object.keys(timeData);
-            chartCargas.data.datasets[0].data = Object.values(timeData);
+            // SOLICITUD CLAVE: Ordenar de mayor a menor carga
+            const sortedTimeData = Object.entries(timeData).sort((a, b) => b[1] - a[1]);
+
+            chartCargas.data.labels = sortedTimeData.map(item => item[0]);
+            chartCargas.data.datasets[0].data = sortedTimeData.map(item => item[1]);
             chartCargas.update();
 
             // Agrupación por Especialidad
@@ -341,9 +372,7 @@
                 espData[row.especialidad] = (espData[row.especialidad] || 0) + 1;
             });
 
-            // Ordenar para mostrar las top especialidades
             const sortedEsp = Object.entries(espData).sort((a, b) => b[1] - a[1]);
-            
             chartEspecialidad.data.labels = sortedEsp.map(item => item[0]);
             chartEspecialidad.data.datasets[0].data = sortedEsp.map(item => item[1]);
             chartEspecialidad.update();
@@ -354,21 +383,23 @@
             const especialidades = ['Cardiología', 'Traumatología', 'Medicina General', 'Neurología', 'Pediatría'];
             const estados = ['nueva', 'en proceso', 'detenida', 'finalizada'];
             
-            for(let i=0; i<30; i++) {
+            // Creamos un escenario donde ciertos días tienen intencionalmente picos de carga para notar el orden
+            for(let i=0; i<40; i++) {
                 const date = new Date();
-                date.setDate(date.getDate() - Math.floor(Math.random() * 60)); // Datos de los últimos 60 días
+                // Concentrar aleatoriedad para simular que un par de fechas acumulan más bases
+                date.setDate(date.getDate() - (Math.floor(Math.random() * 7))); 
                 
                 mock.push({
                     'ID': i + 1,
                     'Nombre carga': 'Lista de Espera ' + (i+1),
                     'Nombre tipo': i % 3 === 0 ? 'IA Automática' : 'Manual Rutina',
                     'tipo de carga': i % 3 === 0 ? '' : 'Manual',
-                    'Fecha carga': date.toISOString(),
+                    // Enviar fecha en formato crudo para probar el parche de zona horaria
+                    'Fecha carga': date.toISOString().split('T')[0], 
                     'Avance': Math.floor(Math.random() * 100),
-                    'Contactabilidad': Math.floor(Math.random() * 40) + 40, // 40-80%
-                    'Efectividad': Math.floor(Math.random() * 30) + 20, // 20-50%
+                    'Contactabilidad': Math.floor(Math.random() * 40) + 40,
+                    'Efectividad': Math.floor(Math.random() * 30) + 20,
                     'estado': estados[Math.floor(Math.random() * estados.length)],
-                    'Activa': 'SI', // Mantenido por compatibilidad original, pero no se usa visualmente
                     'cantidad de registros': Math.floor(Math.random() * 800) + 100,
                     'Nombre prioridad': i % 4 === 0 ? 'Urgente' : 'Normal',
                     'peso prioridad': i % 4 === 0 ? 1 : 2,
