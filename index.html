@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard Operacional - Contact Center (V3)</title>
+    <title>Dashboard Operacional - Contact Center (V4)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
@@ -91,14 +91,14 @@
     <section class="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-8 mb-8">
         <div class="card p-6 md:col-span-2">
             <div class="flex justify-between items-center mb-4">
-                <h3 class="text-lg font-bold text-gray-700 font-semibold">Ranking de Cargas (Mayor a Menor)</h3>
+                <h3 class="text-lg font-bold text-gray-700 font-semibold">Cargas por Período (Orden Cronológico)</h3>
                 <select id="chartGroupMode" class="filter-input text-xs w-auto py-1" onchange="processData()">
                     <option value="day">Por Día</option>
                     <option value="week">Por Semana</option>
                     <option value="month">Por Mes</option>
                 </select>
             </div>
-            <canvas id="chartCargas" height="150"></canvas>
+            <canvas id="chartCargas" height="120"></canvas>
         </div>
         <div class="card p-6">
             <h3 class="text-lg font-bold text-gray-700 mb-4 font-semibold">Cargas por Especialidad</h3>
@@ -132,7 +132,6 @@
     </section>
 
     <script>
-        // CONFIGURACIÓN DE CONEXIÓN A GOOGLE SHEETS
         const SHEET_CSV_URL = 'TU_URL_AQUI';
 
         let rawData = [];
@@ -141,9 +140,8 @@
         document.addEventListener('DOMContentLoaded', () => {
             initCharts();
             setupEventListeners();
-            // Descomenta fetchData() cuando tengas la URL real conectada al Sheets
             // fetchData(); 
-            loadMockData(); // Genera datos de prueba
+            loadMockData(); 
         });
 
         function setupEventListeners() {
@@ -152,11 +150,10 @@
             });
         }
 
-        // PARCHE ZONA HORARIA: Normalizamos la fecha asumiendo que es la fecha pura del calendario
+        // PARCHE ZONA HORARIA
         function parseDateSafe(dateStr) {
             const d = new Date(dateStr);
-            if (isNaN(d.getTime())) return new Date(); // Fallback si viene vacía
-            // Sumamos el offset de la zona horaria para forzarla al mediodía local y evitar que salte de día
+            if (isNaN(d.getTime())) return new Date(); 
             return new Date(d.getTime() + Math.abs(d.getTimezoneOffset() * 60000));
         }
 
@@ -184,7 +181,6 @@
 
         function cleanData(data) {
             return data.filter(row => row['ID']).map(row => {
-                // Validación Tipo de Carga cruzada con Nombre Tipo
                 let tipoCarga = (row['tipo de carga'] || '').toString().trim();
                 let nombreTipo = (row['Nombre tipo'] || '').toString().toUpperCase();
                 if (!tipoCarga) {
@@ -194,7 +190,6 @@
                 return {
                     ...row,
                     tipoCarga: tipoCarga,
-                    // Uso de la función segura para evitar que "no calzen los días"
                     fecha: parseDateSafe(row['Fecha carga']),
                     cantidad: parseInt(row['cantidad de registros']) || 0,
                     avance: parseFloat(row['Avance']) || 0,
@@ -229,7 +224,6 @@
             const fEstado = document.getElementById('filterEstado').value;
             const fEsp = document.getElementById('filterEspecialidad').value;
 
-            // Ajuste de filtros de fecha considerando inicio del día y final del día local
             const startDate = startStr ? new Date(startStr + 'T00:00:00') : null;
             const endDate = endStr ? new Date(endStr + 'T23:59:59') : null;
 
@@ -270,7 +264,6 @@
 
             data.forEach(row => {
                 const badgeColor = estadoColors[row.estado] || 'bg-gray-100 text-gray-800';
-                // Formateamos la fecha en formato chileno/latino tradicional DD/MM/YYYY
                 const fechaFormato = row.fecha.toLocaleDateString('es-CL');
                 
                 tableBody.innerHTML += `
@@ -306,7 +299,7 @@
         function initCharts() {
             const ctx1 = document.getElementById('chartCargas').getContext('2d');
             chartCargas = new Chart(ctx1, {
-                type: 'bar',
+                type: 'bar', // Gráfico Vertical nuevamente
                 data: { 
                     labels: [], 
                     datasets: [{ 
@@ -317,12 +310,11 @@
                     }] 
                 },
                 options: { 
-                    indexAxis: 'y', // AQUÍ ESTÁ LA MAGIA: Vuelve el gráfico horizontal para leer bien las fechas
                     responsive: true, 
                     plugins: { legend: { display: false } }, 
                     scales: { 
-                        x: { beginAtZero: true, ticks: { precision: 0 } },
-                        y: { ticks: { font: { weight: 'bold' } } }
+                        y: { beginAtZero: true, ticks: { precision: 0 } },
+                        x: { ticks: { font: { weight: '600' } } }
                     } 
                 }
             });
@@ -345,28 +337,32 @@
         function updateCharts(data) {
             const groupMode = document.getElementById('chartGroupMode').value;
             
-            // Agrupación para Gráfico Principal (Fechas)
-            const timeData = {};
-            data.forEach(row => {
+            // MAGIA AQUÍ: Ordenamos primero el array completo por fecha de forma cronológica (del más antiguo al más nuevo)
+            const chronologicalData = [...data].sort((a, b) => a.fecha - b.fecha);
+            
+            // Usamos un objeto Map para mantener el orden de inserción estricto
+            const timeDataMap = new Map();
+            
+            chronologicalData.forEach(row => {
                 let key;
                 if (groupMode === 'day') {
-                    key = row.fecha.toLocaleDateString('es-CL'); // Fuerza formato DD-MM-YYYY
+                    key = row.fecha.toLocaleDateString('es-CL');
                 } else if (groupMode === 'week') {
                     key = `Semana ${getWeekNumber(row.fecha)} - ${row.fecha.getFullYear()}`;
                 } else {
                     key = `${row.fecha.toLocaleString('es-CL', { month: 'short' })} ${row.fecha.getFullYear()}`.toUpperCase();
                 }
-                timeData[key] = (timeData[key] || 0) + 1;
+                
+                // Si la llave ya existe, suma 1. Si no, la inicializa en 1.
+                timeDataMap.set(key, (timeDataMap.get(key) || 0) + 1);
             });
 
-            // SOLICITUD CLAVE: Ordenar de mayor a menor carga
-            const sortedTimeData = Object.entries(timeData).sort((a, b) => b[1] - a[1]);
-
-            chartCargas.data.labels = sortedTimeData.map(item => item[0]);
-            chartCargas.data.datasets[0].data = sortedTimeData.map(item => item[1]);
+            // Extraemos llaves (fechas) y valores (volumen) respetando el orden cronológico del Map
+            chartCargas.data.labels = Array.from(timeDataMap.keys());
+            chartCargas.data.datasets[0].data = Array.from(timeDataMap.values());
             chartCargas.update();
 
-            // Agrupación por Especialidad
+            // Agrupación por Especialidad (sigue ordenada de mayor a menor volumen porque es un gráfico circular)
             const espData = {};
             data.forEach(row => {
                 espData[row.especialidad] = (espData[row.especialidad] || 0) + 1;
@@ -383,18 +379,15 @@
             const especialidades = ['Cardiología', 'Traumatología', 'Medicina General', 'Neurología', 'Pediatría'];
             const estados = ['nueva', 'en proceso', 'detenida', 'finalizada'];
             
-            // Creamos un escenario donde ciertos días tienen intencionalmente picos de carga para notar el orden
             for(let i=0; i<40; i++) {
                 const date = new Date();
-                // Concentrar aleatoriedad para simular que un par de fechas acumulan más bases
-                date.setDate(date.getDate() - (Math.floor(Math.random() * 7))); 
+                date.setDate(date.getDate() - (Math.floor(Math.random() * 30))); // Datos de los últimos 30 días
                 
                 mock.push({
                     'ID': i + 1,
                     'Nombre carga': 'Lista de Espera ' + (i+1),
                     'Nombre tipo': i % 3 === 0 ? 'IA Automática' : 'Manual Rutina',
                     'tipo de carga': i % 3 === 0 ? '' : 'Manual',
-                    // Enviar fecha en formato crudo para probar el parche de zona horaria
                     'Fecha carga': date.toISOString().split('T')[0], 
                     'Avance': Math.floor(Math.random() * 100),
                     'Contactabilidad': Math.floor(Math.random() * 40) + 40,
