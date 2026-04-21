@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard Operacional - Contact Center (V4)</title>
+    <title>Dashboard Operacional - Contact Center (V5)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
@@ -75,7 +75,7 @@
             <h2 id="kpiTotalBases" class="text-3xl font-bold text-gray-800">0</h2>
         </div>
         <div class="card p-6 border-l-4 border-company-green">
-            <p class="text-gray-500 text-xs font-bold uppercase">Pacientes/Registros Totales</p>
+            <p class="text-gray-500 text-xs font-bold uppercase">Pacientes/Registros</p>
             <h2 id="kpiTotalRegistros" class="text-3xl font-bold text-gray-800">0</h2>
         </div>
         <div class="card p-6 border-l-4 border-blue-400">
@@ -91,7 +91,7 @@
     <section class="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-8 mb-8">
         <div class="card p-6 md:col-span-2">
             <div class="flex justify-between items-center mb-4">
-                <h3 class="text-lg font-bold text-gray-700 font-semibold">Cargas por Período (Orden Cronológico)</h3>
+                <h3 class="text-lg font-bold text-gray-700 font-semibold">Cargas Totales por Fecha</h3>
                 <select id="chartGroupMode" class="filter-input text-xs w-auto py-1" onchange="processData()">
                     <option value="day">Por Día</option>
                     <option value="week">Por Semana</option>
@@ -106,7 +106,55 @@
         </div>
     </section>
 
-    <section class="max-w-7xl mx-auto card overflow-hidden">
+    <section class="max-w-7xl mx-auto mb-8">
+        <h2 class="text-2xl font-bold text-gray-800 mb-4">Análisis Predictivo: Promedios Diarios</h2>
+        
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div class="card p-6 border-t-4 border-red-400">
+                <h3 class="text-lg font-bold text-gray-700 mb-1">Grupo: Bloqueo</h3>
+                <p class="text-xs text-gray-500 mb-4 h-8">Anulaciones, Avisos de hora, Reasignaciones, LEQ, Entrega Información.</p>
+                
+                <div class="mb-4">
+                    <canvas id="chartPromedioBloqueo" height="150"></canvas>
+                </div>
+                <div class="overflow-hidden rounded-lg border border-gray-200">
+                    <table class="min-w-full text-left text-sm">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-4 py-2 font-bold text-gray-600">Día de la Semana</th>
+                                <th class="px-4 py-2 font-bold text-gray-600 text-right">Promedio de Bases</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tablaPromediosBloqueo" class="divide-y divide-gray-100 bg-white">
+                            </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="card p-6 border-t-4 border-blue-400">
+                <h3 class="text-lg font-bold text-gray-700 mb-1">Grupo: Agendamientos</h3>
+                <p class="text-xs text-gray-500 mb-4 h-8">Ayudas Técnicas, Ingresos, Controles, Vicio Refracción, Preoperatorios.</p>
+                
+                <div class="mb-4">
+                    <canvas id="chartPromedioAgendamiento" height="150"></canvas>
+                </div>
+                <div class="overflow-hidden rounded-lg border border-gray-200">
+                    <table class="min-w-full text-left text-sm">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-4 py-2 font-bold text-gray-600">Día de la Semana</th>
+                                <th class="px-4 py-2 font-bold text-gray-600 text-right">Promedio de Bases</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tablaPromediosAgendamiento" class="divide-y divide-gray-100 bg-white">
+                            </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="max-w-7xl mx-auto card overflow-hidden mb-12">
         <div class="p-6 border-b border-gray-100 flex justify-between items-center">
             <h3 class="text-lg font-bold text-gray-700">Detalle de Bases (Ordenadas por Prioridad)</h3>
         </div>
@@ -116,12 +164,11 @@
                     <tr>
                         <th class="px-6 py-4">Prioridad</th>
                         <th class="px-6 py-4">Fecha Carga</th>
-                        <th class="px-6 py-4">Especialidad</th>
+                        <th class="px-6 py-4">Categoría</th>
+                        <th class="px-6 py-4">Nombre Tipo</th>
                         <th class="px-6 py-4">Nombre Carga</th>
-                        <th class="px-6 py-4">Tipo Carga</th>
                         <th class="px-6 py-4 text-center">Registros</th>
                         <th class="px-6 py-4 text-center">Avance</th>
-                        <th class="px-6 py-4 text-center">Efectividad</th>
                         <th class="px-6 py-4">Estado</th>
                     </tr>
                 </thead>
@@ -136,6 +183,21 @@
 
         let rawData = [];
         let chartCargas, chartEspecialidad;
+        let chartPromedioBloqueo, chartPromedioAgendamiento;
+
+        const listadoBloqueo = [
+            "anulaciones", "aviso de hora", "aviso de horas - thalamus", 
+            "ia - anulaciones", "ia - aviso de hora", "ia - aviso de horas - thalamus", 
+            "ia entrega información", "ia - reasignaciones", "leq", "reasignaciones"
+        ];
+
+        const listadoAgendamiento = [
+            "ges - ayudas técnicas", "ges - ingresos", "ges - ingresos cataratas", 
+            "ges - pre qx cataratas", "ges - preoperatorio", "ges - vicio refracción (vr)", 
+            "agendamiento controles", "agendamiento controles ges", "agendamiento express"
+        ];
+
+        const diasSemanaNombres = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
 
         document.addEventListener('DOMContentLoaded', () => {
             initCharts();
@@ -150,11 +212,19 @@
             });
         }
 
-        // PARCHE ZONA HORARIA
-        function parseDateSafe(dateStr) {
-            const d = new Date(dateStr);
-            if (isNaN(d.getTime())) return new Date(); 
-            return new Date(d.getTime() + Math.abs(d.getTimezoneOffset() * 60000));
+        // PARCHE DE FECHA ABSOLUTO: Lee el string y lo fuerza a mediodía local
+        function parseDateStrict(dateStr) {
+            if (!dateStr) return new Date();
+            // Asume que viene en formato 'YYYY-MM-DD' o ISO desde Sheets
+            const parts = dateStr.toString().substring(0, 10).split(/[-/]/);
+            if(parts.length === 3) {
+                // Si viene como DD/MM/YYYY o YYYY-MM-DD
+                let y = parts[0].length === 4 ? parts[0] : parts[2];
+                let m = parts[0].length === 4 ? parts[1] : parts[1];
+                let d = parts[0].length === 4 ? parts[2] : parts[0];
+                return new Date(y, m - 1, d, 12, 0, 0); // Forzar a las 12 PM para evitar cambios por zona horaria
+            }
+            return new Date(dateStr);
         }
 
         async function fetchData() {
@@ -182,15 +252,28 @@
         function cleanData(data) {
             return data.filter(row => row['ID']).map(row => {
                 let tipoCarga = (row['tipo de carga'] || '').toString().trim();
-                let nombreTipo = (row['Nombre tipo'] || '').toString().toUpperCase();
+                let nombreTipoReal = (row['Nombre tipo'] || '').toString().trim();
+                let nombreTipoUpp = nombreTipoReal.toUpperCase();
+                let nombreTipoLow = nombreTipoReal.toLowerCase();
+
                 if (!tipoCarga) {
-                    tipoCarga = nombreTipo.includes('IA') ? 'IA' : 'Manual';
+                    tipoCarga = nombreTipoUpp.includes('IA') ? 'IA' : 'Manual';
+                }
+
+                // Clasificador de Grupos Exacto
+                let grupoCategoria = "Otros";
+                if (listadoBloqueo.includes(nombreTipoLow)) {
+                    grupoCategoria = "Bloqueo";
+                } else if (listadoAgendamiento.includes(nombreTipoLow)) {
+                    grupoCategoria = "Agendamiento";
                 }
 
                 return {
                     ...row,
                     tipoCarga: tipoCarga,
-                    fecha: parseDateSafe(row['Fecha carga']),
+                    nombreTipoReal: nombreTipoReal,
+                    grupoCategoria: grupoCategoria,
+                    fecha: parseDateStrict(row['Fecha carga']),
                     cantidad: parseInt(row['cantidad de registros']) || 0,
                     avance: parseFloat(row['Avance']) || 0,
                     efectividad: parseFloat(row['Efectividad']) || 0,
@@ -224,8 +307,11 @@
             const fEstado = document.getElementById('filterEstado').value;
             const fEsp = document.getElementById('filterEspecialidad').value;
 
-            const startDate = startStr ? new Date(startStr + 'T00:00:00') : null;
-            const endDate = endStr ? new Date(endStr + 'T23:59:59') : null;
+            const startDate = startStr ? parseDateStrict(startStr) : null;
+            if(startDate) startDate.setHours(0,0,0);
+            
+            const endDate = endStr ? parseDateStrict(endStr) : null;
+            if(endDate) endDate.setHours(23,59,59);
 
             let filtered = rawData.filter(row => {
                 const matchDate = (!startDate || row.fecha >= startDate) && (!endDate || row.fecha <= endDate);
@@ -236,13 +322,13 @@
                 return matchDate && matchCarga && matchEstado && matchEsp;
             });
 
-            // Ordenar tabla siempre dando enfásis al peso de la prioridad
             filtered.sort((a, b) => a.prioridadPeso - b.prioridadPeso);
 
             updateDashboard(filtered);
         }
 
         function updateDashboard(data) {
+            // KPIs Generales
             const totalRegistros = data.reduce((sum, row) => sum + row.cantidad, 0);
             const avgEfectividad = data.length > 0 ? (data.reduce((sum, row) => sum + row.efectividad, 0) / data.length).toFixed(1) : 0;
             const avgContact = data.length > 0 ? (data.reduce((sum, row) => sum + row.contactabilidad, 0) / data.length).toFixed(1) : 0;
@@ -252,6 +338,13 @@
             document.getElementById('kpiAvgEfectividad').innerText = avgEfectividad + '%';
             document.getElementById('kpiAvgContact').innerText = avgContact + '%';
 
+            // Actualizar Gráficos Principales
+            updateMainCharts(data);
+
+            // Actualizar Análisis Predictivo
+            updatePromediosSemanales(data);
+
+            // Tabla de Detalle
             const tableBody = document.getElementById('tableBody');
             tableBody.innerHTML = '';
             
@@ -262,68 +355,82 @@
                 'finalizada': 'bg-gray-200 text-gray-800'
             };
 
+            const grupoColors = {
+                'Bloqueo': 'text-red-700 bg-red-100 border border-red-200',
+                'Agendamiento': 'text-blue-700 bg-blue-100 border border-blue-200',
+                'Otros': 'text-gray-600 bg-gray-100 border border-gray-200'
+            };
+
             data.forEach(row => {
                 const badgeColor = estadoColors[row.estado] || 'bg-gray-100 text-gray-800';
-                const fechaFormato = row.fecha.toLocaleDateString('es-CL');
+                // Formato de fecha confiable
+                const dd = String(row.fecha.getDate()).padStart(2, '0');
+                const mm = String(row.fecha.getMonth() + 1).padStart(2, '0');
+                const yyyy = row.fecha.getFullYear();
+                const fechaFormato = `${dd}/${mm}/${yyyy}`;
+                
+                const catStyle = grupoColors[row.grupoCategoria];
                 
                 tableBody.innerHTML += `
                     <tr class="hover:bg-green-50 transition">
                         <td class="px-6 py-4">
                             <span class="font-bold text-gray-800">${row.prioridadPeso}</span> 
-                            <span class="text-xs text-gray-500">(${row.prioridadNombre})</span>
+                            <span class="text-[10px] text-gray-500 block leading-tight">(${row.prioridadNombre})</span>
                         </td>
                         <td class="px-6 py-4 font-medium text-gray-700">${fechaFormato}</td>
-                        <td class="px-6 py-4 text-company-green font-semibold">${row.especialidad}</td>
-                        <td class="px-6 py-4">${row['Nombre carga']}</td>
-                        <td class="px-6 py-4 font-semibold ${row.tipoCarga === 'IA' ? 'text-purple-600' : 'text-blue-600'}">${row.tipoCarga}</td>
-                        <td class="px-6 py-4 text-center font-bold">${row.cantidad.toLocaleString()}</td>
+                        <td class="px-6 py-4">
+                            <span class="px-2 py-1 text-[11px] font-bold rounded ${catStyle}">${row.grupoCategoria}</span>
+                        </td>
+                        <td class="px-6 py-4 text-xs font-semibold text-gray-700">${row.nombreTipoReal}</td>
+                        <td class="px-6 py-4 text-sm">${row['Nombre carga']}</td>
+                        <td class="px-6 py-4 text-center font-bold text-gray-700">${row.cantidad.toLocaleString()}</td>
                         <td class="px-6 py-4 text-center">
                             <div class="w-full bg-gray-200 rounded-full h-2">
                                 <div class="bg-company-green h-2 rounded-full" style="width: ${row.avance}%"></div>
                             </div>
-                            <span class="text-xs text-gray-500 font-bold">${row.avance}%</span>
+                            <span class="text-[11px] text-gray-500 font-bold">${row.avance}%</span>
                         </td>
-                        <td class="px-6 py-4 text-center text-orange-600 font-bold">${row.efectividad}%</td>
                         <td class="px-6 py-4">
-                            <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold uppercase ${badgeColor}">
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold uppercase ${badgeColor}">
                                 ${row.estado}
                             </span>
                         </td>
                     </tr>
                 `;
             });
-
-            updateCharts(data);
         }
 
         function initCharts() {
+            // Chart Cargas Principales
             const ctx1 = document.getElementById('chartCargas').getContext('2d');
             chartCargas = new Chart(ctx1, {
-                type: 'bar', // Gráfico Vertical nuevamente
-                data: { 
-                    labels: [], 
-                    datasets: [{ 
-                        label: 'Cant. de Bases Cargadas', 
-                        data: [], 
-                        backgroundColor: '#4CAF50', 
-                        borderRadius: 4 
-                    }] 
-                },
-                options: { 
-                    responsive: true, 
-                    plugins: { legend: { display: false } }, 
-                    scales: { 
-                        y: { beginAtZero: true, ticks: { precision: 0 } },
-                        x: { ticks: { font: { weight: '600' } } }
-                    } 
-                }
+                type: 'bar',
+                data: { labels: [], datasets: [{ label: 'Bases', data: [], backgroundColor: '#4CAF50', borderRadius: 4 }] },
+                options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } }, x: { ticks: { font: { weight: '600' } } } } }
             });
 
+            // Chart Especialidad
             const ctx2 = document.getElementById('chartEspecialidad').getContext('2d');
             chartEspecialidad = new Chart(ctx2, {
                 type: 'doughnut',
                 data: { labels: [], datasets: [{ data: [], backgroundColor: ['#2E7D32', '#4CAF50', '#81C784', '#C8E6C9', '#1B5E20'] }] },
                 options: { responsive: true, cutout: '60%', plugins: { legend: { position: 'bottom' } } }
+            });
+
+            // Chart Promedio Bloqueo
+            const ctx3 = document.getElementById('chartPromedioBloqueo').getContext('2d');
+            chartPromedioBloqueo = new Chart(ctx3, {
+                type: 'bar',
+                data: { labels: ['Lun', 'Mar', 'Mié', 'Jue', 'Vie'], datasets: [{ label: 'Promedio', data: [], backgroundColor: '#EF5350', borderRadius: 4 }] },
+                options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+            });
+
+            // Chart Promedio Agendamiento
+            const ctx4 = document.getElementById('chartPromedioAgendamiento').getContext('2d');
+            chartPromedioAgendamiento = new Chart(ctx4, {
+                type: 'bar',
+                data: { labels: ['Lun', 'Mar', 'Mié', 'Jue', 'Vie'], datasets: [{ label: 'Promedio', data: [], backgroundColor: '#42A5F5', borderRadius: 4 }] },
+                options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
             });
         }
 
@@ -334,39 +441,32 @@
             return Math.ceil((((d - yearStart) / 86400000) + 1)/7);
         }
 
-        function updateCharts(data) {
+        function updateMainCharts(data) {
             const groupMode = document.getElementById('chartGroupMode').value;
-            
-            // MAGIA AQUÍ: Ordenamos primero el array completo por fecha de forma cronológica (del más antiguo al más nuevo)
             const chronologicalData = [...data].sort((a, b) => a.fecha - b.fecha);
-            
-            // Usamos un objeto Map para mantener el orden de inserción estricto
             const timeDataMap = new Map();
             
             chronologicalData.forEach(row => {
                 let key;
                 if (groupMode === 'day') {
-                    key = row.fecha.toLocaleDateString('es-CL');
+                    const dd = String(row.fecha.getDate()).padStart(2, '0');
+                    const mm = String(row.fecha.getMonth() + 1).padStart(2, '0');
+                    key = `${dd}/${mm}/${row.fecha.getFullYear()}`;
                 } else if (groupMode === 'week') {
                     key = `Semana ${getWeekNumber(row.fecha)} - ${row.fecha.getFullYear()}`;
                 } else {
                     key = `${row.fecha.toLocaleString('es-CL', { month: 'short' })} ${row.fecha.getFullYear()}`.toUpperCase();
                 }
                 
-                // Si la llave ya existe, suma 1. Si no, la inicializa en 1.
                 timeDataMap.set(key, (timeDataMap.get(key) || 0) + 1);
             });
 
-            // Extraemos llaves (fechas) y valores (volumen) respetando el orden cronológico del Map
             chartCargas.data.labels = Array.from(timeDataMap.keys());
             chartCargas.data.datasets[0].data = Array.from(timeDataMap.values());
             chartCargas.update();
 
-            // Agrupación por Especialidad (sigue ordenada de mayor a menor volumen porque es un gráfico circular)
             const espData = {};
-            data.forEach(row => {
-                espData[row.especialidad] = (espData[row.especialidad] || 0) + 1;
-            });
+            data.forEach(row => espData[row.especialidad] = (espData[row.especialidad] || 0) + 1);
 
             const sortedEsp = Object.entries(espData).sort((a, b) => b[1] - a[1]);
             chartEspecialidad.data.labels = sortedEsp.map(item => item[0]);
@@ -374,21 +474,109 @@
             chartEspecialidad.update();
         }
 
+        function countWeekdaysInRange(startDate, endDate) {
+            let counts = [0, 0, 0, 0, 0, 0, 0]; // Dom a Sab
+            if(!startDate || !endDate || startDate > endDate) return counts;
+            
+            let current = new Date(startDate);
+            current.setHours(12,0,0);
+            
+            while (current <= endDate) {
+                counts[current.getDay()]++;
+                current.setDate(current.getDate() + 1);
+            }
+            return counts;
+        }
+
+        function updatePromediosSemanales(data) {
+            if(data.length === 0) return;
+
+            // 1. Encontrar el rango de fechas real de la data para el cálculo
+            const dates = data.map(d => d.fecha.getTime());
+            const minDate = new Date(Math.min(...dates));
+            const maxDate = new Date(Math.max(...dates));
+
+            // 2. Contar cuántos Lunes, Martes, etc. hubo en ese rango
+            const daysCount = countWeekdaysInRange(minDate, maxDate);
+
+            // 3. Filtrar grupos
+            const dataBloqueo = data.filter(d => d.grupoCategoria === 'Bloqueo');
+            const dataAgendamiento = data.filter(d => d.grupoCategoria === 'Agendamiento');
+
+            // Arrays para promedios (índices 1 a 5 = Lunes a Viernes)
+            const promBloqueo = [0,0,0,0,0];
+            const promAgendamiento = [0,0,0,0,0];
+
+            // 4. Sumarizar y calcular (solo Lunes a Viernes para el dashboard operativo)
+            for(let i=1; i<=5; i++) {
+                // Bloqueo
+                let sumB = dataBloqueo.filter(d => d.fecha.getDay() === i).length;
+                promBloqueo[i-1] = daysCount[i] > 0 ? (sumB / daysCount[i]) : 0;
+                
+                // Agendamiento
+                let sumA = dataAgendamiento.filter(d => d.fecha.getDay() === i).length;
+                promAgendamiento[i-1] = daysCount[i] > 0 ? (sumA / daysCount[i]) : 0;
+            }
+
+            // 5. Actualizar Gráficos Promedios
+            chartPromedioBloqueo.data.datasets[0].data = promBloqueo;
+            chartPromedioBloqueo.update();
+
+            chartPromedioAgendamiento.data.datasets[0].data = promAgendamiento;
+            chartPromedioAgendamiento.update();
+
+            // 6. Actualizar Tablas HTML
+            const labelsHtml = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'];
+            
+            let htmlBloqueo = '';
+            let htmlAgendamiento = '';
+
+            for(let i=0; i<5; i++) {
+                htmlBloqueo += `
+                    <tr>
+                        <td class="px-4 py-2 font-medium">${labelsHtml[i]}</td>
+                        <td class="px-4 py-2 text-right font-bold text-red-600">${promBloqueo[i].toFixed(1)}</td>
+                    </tr>`;
+                
+                htmlAgendamiento += `
+                    <tr>
+                        <td class="px-4 py-2 font-medium">${labelsHtml[i]}</td>
+                        <td class="px-4 py-2 text-right font-bold text-blue-600">${promAgendamiento[i].toFixed(1)}</td>
+                    </tr>`;
+            }
+
+            document.getElementById('tablaPromediosBloqueo').innerHTML = htmlBloqueo;
+            document.getElementById('tablaPromediosAgendamiento').innerHTML = htmlAgendamiento;
+        }
+
         function loadMockData() {
             const mock = [];
-            const especialidades = ['Cardiología', 'Traumatología', 'Medicina General', 'Neurología', 'Pediatría'];
             const estados = ['nueva', 'en proceso', 'detenida', 'finalizada'];
+            const especialidades = ['Cardiología', 'Traumatología', 'General'];
             
-            for(let i=0; i<40; i++) {
+            // Usaremos fechas reales de los últimos 30 días
+            for(let i=0; i<60; i++) {
                 const date = new Date();
-                date.setDate(date.getDate() - (Math.floor(Math.random() * 30))); // Datos de los últimos 30 días
+                date.setHours(12,0,0);
+                date.setDate(date.getDate() - Math.floor(Math.random() * 30));
                 
+                // Mezclar tipos
+                let nombreTipoMock = i % 2 === 0 
+                    ? listadoBloqueo[Math.floor(Math.random() * listadoBloqueo.length)]
+                    : listadoAgendamiento[Math.floor(Math.random() * listadoAgendamiento.length)];
+                
+                if (i % 5 === 0) nombreTipoMock = "Control Normal (Otros)";
+
+                const yy = date.getFullYear();
+                const mm = String(date.getMonth() + 1).padStart(2, '0');
+                const dd = String(date.getDate()).padStart(2, '0');
+
                 mock.push({
                     'ID': i + 1,
-                    'Nombre carga': 'Lista de Espera ' + (i+1),
-                    'Nombre tipo': i % 3 === 0 ? 'IA Automática' : 'Manual Rutina',
+                    'Nombre carga': 'Lista Op. ' + (i+1),
+                    'Nombre tipo': nombreTipoMock,
                     'tipo de carga': i % 3 === 0 ? '' : 'Manual',
-                    'Fecha carga': date.toISOString().split('T')[0], 
+                    'Fecha carga': `${yy}-${mm}-${dd}`, 
                     'Avance': Math.floor(Math.random() * 100),
                     'Contactabilidad': Math.floor(Math.random() * 40) + 40,
                     'Efectividad': Math.floor(Math.random() * 30) + 20,
