@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard Operacional - Contact Center (V5)</title>
+    <title>Dashboard Operacional - Contact Center (V5.1)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
@@ -91,7 +91,7 @@
     <section class="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-8 mb-8">
         <div class="card p-6 md:col-span-2">
             <div class="flex justify-between items-center mb-4">
-                <h3 class="text-lg font-bold text-gray-700 font-semibold">Cargas Totales por Fecha</h3>
+                <h3 class="text-lg font-bold text-gray-700 font-semibold">Cargas Totales por Fecha (Ignora Estado)</h3>
                 <select id="chartGroupMode" class="filter-input text-xs w-auto py-1" onchange="processData()">
                     <option value="day">Por Día</option>
                     <option value="week">Por Semana</option>
@@ -156,7 +156,7 @@
 
     <section class="max-w-7xl mx-auto card overflow-hidden mb-12">
         <div class="p-6 border-b border-gray-100 flex justify-between items-center">
-            <h3 class="text-lg font-bold text-gray-700">Detalle de Bases (Ordenadas por Prioridad)</h3>
+            <h3 class="text-lg font-bold text-gray-700">Detalle de Bases (Afectado por Filtro de Estado)</h3>
         </div>
         <div class="overflow-x-auto">
             <table class="w-full text-left">
@@ -197,8 +197,6 @@
             "agendamiento controles", "agendamiento controles ges", "agendamiento express"
         ];
 
-        const diasSemanaNombres = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
-
         document.addEventListener('DOMContentLoaded', () => {
             initCharts();
             setupEventListeners();
@@ -212,19 +210,27 @@
             });
         }
 
-        // PARCHE DE FECHA ABSOLUTO: Lee el string y lo fuerza a mediodía local
+        // NUEVO PARCHE DRÁSTICO DE FECHA: Elimina totalmente la hora
         function parseDateStrict(dateStr) {
             if (!dateStr) return new Date();
-            // Asume que viene en formato 'YYYY-MM-DD' o ISO desde Sheets
-            const parts = dateStr.toString().substring(0, 10).split(/[-/]/);
+            // Esto corta el string en el primer espacio o letra 'T', matando cualquier hora
+            let fechaPura = dateStr.toString().trim().split(/[\sT]+/)[0];
+            
+            const parts = fechaPura.split(/[-/]/);
             if(parts.length === 3) {
-                // Si viene como DD/MM/YYYY o YYYY-MM-DD
                 let y = parts[0].length === 4 ? parts[0] : parts[2];
                 let m = parts[0].length === 4 ? parts[1] : parts[1];
                 let d = parts[0].length === 4 ? parts[2] : parts[0];
-                return new Date(y, m - 1, d, 12, 0, 0); // Forzar a las 12 PM para evitar cambios por zona horaria
+                return new Date(y, m - 1, d, 12, 0, 0); // Forzado al mediodía exacto
             }
-            return new Date(dateStr);
+            
+            // Fallback en caso de formatos raros
+            const d = new Date(fechaPura);
+            if (!isNaN(d.getTime())) {
+                d.setHours(12, 0, 0, 0);
+                return d;
+            }
+            return new Date();
         }
 
         async function fetchData() {
@@ -260,7 +266,6 @@
                     tipoCarga = nombreTipoUpp.includes('IA') ? 'IA' : 'Manual';
                 }
 
-                // Clasificador de Grupos Exacto
                 let grupoCategoria = "Otros";
                 if (listadoBloqueo.includes(nombreTipoLow)) {
                     grupoCategoria = "Bloqueo";
@@ -273,7 +278,7 @@
                     tipoCarga: tipoCarga,
                     nombreTipoReal: nombreTipoReal,
                     grupoCategoria: grupoCategoria,
-                    fecha: parseDateStrict(row['Fecha carga']),
+                    fecha: parseDateStrict(row['Fecha carga']), // Se usa el nuevo parser estricto
                     cantidad: parseInt(row['cantidad de registros']) || 0,
                     avance: parseFloat(row['Avance']) || 0,
                     efectividad: parseFloat(row['Efectividad']) || 0,
@@ -289,9 +294,7 @@
         function populateFilters(data) {
             const especialidades = [...new Set(data.map(item => item.especialidad))].sort();
             const selectEsp = document.getElementById('filterEspecialidad');
-            
             selectEsp.innerHTML = '<option value="ALL">Todas</option>';
-            
             especialidades.forEach(e => {
                 const opt = document.createElement('option');
                 opt.value = e;
@@ -313,38 +316,44 @@
             const endDate = endStr ? parseDateStrict(endStr) : null;
             if(endDate) endDate.setHours(23,59,59);
 
-            let filtered = rawData.filter(row => {
+            // DATA 1: EXCLUSIVA PARA GRÁFICOS (Ignora el filtro de Estado)
+            let dataParaGraficos = rawData.filter(row => {
                 const matchDate = (!startDate || row.fecha >= startDate) && (!endDate || row.fecha <= endDate);
                 const matchCarga = fCarga === 'ALL' || row.tipoCarga === fCarga;
-                const matchEstado = fEstado === 'ALL' || row.estado === fEstado;
                 const matchEsp = fEsp === 'ALL' || row.especialidad === fEsp;
                 
-                return matchDate && matchCarga && matchEstado && matchEsp;
+                // Nota: fEstado NO se evalúa aquí
+                return matchDate && matchCarga && matchEsp;
             });
 
-            filtered.sort((a, b) => a.prioridadPeso - b.prioridadPeso);
+            // DATA 2: EXCLUSIVA PARA TABLA Y KPIs (Sí usa el filtro de Estado)
+            let dataParaTabla = dataParaGraficos.filter(row => {
+                return fEstado === 'ALL' || row.estado === fEstado;
+            });
 
-            updateDashboard(filtered);
+            dataParaTabla.sort((a, b) => a.prioridadPeso - b.prioridadPeso);
+
+            updateDashboard(dataParaTabla, dataParaGraficos);
         }
 
-        function updateDashboard(data) {
-            // KPIs Generales
-            const totalRegistros = data.reduce((sum, row) => sum + row.cantidad, 0);
-            const avgEfectividad = data.length > 0 ? (data.reduce((sum, row) => sum + row.efectividad, 0) / data.length).toFixed(1) : 0;
-            const avgContact = data.length > 0 ? (data.reduce((sum, row) => sum + row.contactabilidad, 0) / data.length).toFixed(1) : 0;
+        function updateDashboard(dataTabla, dataGraficos) {
+            // KPIs Generales (Afectados por Estado)
+            const totalRegistros = dataTabla.reduce((sum, row) => sum + row.cantidad, 0);
+            const avgEfectividad = dataTabla.length > 0 ? (dataTabla.reduce((sum, row) => sum + row.efectividad, 0) / dataTabla.length).toFixed(1) : 0;
+            const avgContact = dataTabla.length > 0 ? (dataTabla.reduce((sum, row) => sum + row.contactabilidad, 0) / dataTabla.length).toFixed(1) : 0;
 
-            document.getElementById('kpiTotalBases').innerText = data.length;
+            document.getElementById('kpiTotalBases').innerText = dataTabla.length;
             document.getElementById('kpiTotalRegistros').innerText = totalRegistros.toLocaleString();
             document.getElementById('kpiAvgEfectividad').innerText = avgEfectividad + '%';
             document.getElementById('kpiAvgContact').innerText = avgContact + '%';
 
-            // Actualizar Gráficos Principales
-            updateMainCharts(data);
+            // Actualizar Gráficos Principales (NO afectados por Estado)
+            updateMainCharts(dataGraficos);
 
-            // Actualizar Análisis Predictivo
-            updatePromediosSemanales(data);
+            // Actualizar Análisis Predictivo (NO afectados por Estado)
+            updatePromediosSemanales(dataGraficos);
 
-            // Tabla de Detalle
+            // Tabla de Detalle (Afectada por Estado)
             const tableBody = document.getElementById('tableBody');
             tableBody.innerHTML = '';
             
@@ -361,9 +370,8 @@
                 'Otros': 'text-gray-600 bg-gray-100 border border-gray-200'
             };
 
-            data.forEach(row => {
+            dataTabla.forEach(row => {
                 const badgeColor = estadoColors[row.estado] || 'bg-gray-100 text-gray-800';
-                // Formato de fecha confiable
                 const dd = String(row.fecha.getDate()).padStart(2, '0');
                 const mm = String(row.fecha.getMonth() + 1).padStart(2, '0');
                 const yyyy = row.fecha.getFullYear();
@@ -401,7 +409,6 @@
         }
 
         function initCharts() {
-            // Chart Cargas Principales
             const ctx1 = document.getElementById('chartCargas').getContext('2d');
             chartCargas = new Chart(ctx1, {
                 type: 'bar',
@@ -409,7 +416,6 @@
                 options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } }, x: { ticks: { font: { weight: '600' } } } } }
             });
 
-            // Chart Especialidad
             const ctx2 = document.getElementById('chartEspecialidad').getContext('2d');
             chartEspecialidad = new Chart(ctx2, {
                 type: 'doughnut',
@@ -417,7 +423,6 @@
                 options: { responsive: true, cutout: '60%', plugins: { legend: { position: 'bottom' } } }
             });
 
-            // Chart Promedio Bloqueo
             const ctx3 = document.getElementById('chartPromedioBloqueo').getContext('2d');
             chartPromedioBloqueo = new Chart(ctx3, {
                 type: 'bar',
@@ -425,7 +430,6 @@
                 options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
             });
 
-            // Chart Promedio Agendamiento
             const ctx4 = document.getElementById('chartPromedioAgendamiento').getContext('2d');
             chartPromedioAgendamiento = new Chart(ctx4, {
                 type: 'bar',
@@ -475,7 +479,7 @@
         }
 
         function countWeekdaysInRange(startDate, endDate) {
-            let counts = [0, 0, 0, 0, 0, 0, 0]; // Dom a Sab
+            let counts = [0, 0, 0, 0, 0, 0, 0];
             if(!startDate || !endDate || startDate > endDate) return counts;
             
             let current = new Date(startDate);
@@ -491,43 +495,33 @@
         function updatePromediosSemanales(data) {
             if(data.length === 0) return;
 
-            // 1. Encontrar el rango de fechas real de la data para el cálculo
             const dates = data.map(d => d.fecha.getTime());
             const minDate = new Date(Math.min(...dates));
             const maxDate = new Date(Math.max(...dates));
 
-            // 2. Contar cuántos Lunes, Martes, etc. hubo en ese rango
             const daysCount = countWeekdaysInRange(minDate, maxDate);
 
-            // 3. Filtrar grupos
             const dataBloqueo = data.filter(d => d.grupoCategoria === 'Bloqueo');
             const dataAgendamiento = data.filter(d => d.grupoCategoria === 'Agendamiento');
 
-            // Arrays para promedios (índices 1 a 5 = Lunes a Viernes)
             const promBloqueo = [0,0,0,0,0];
             const promAgendamiento = [0,0,0,0,0];
 
-            // 4. Sumarizar y calcular (solo Lunes a Viernes para el dashboard operativo)
             for(let i=1; i<=5; i++) {
-                // Bloqueo
                 let sumB = dataBloqueo.filter(d => d.fecha.getDay() === i).length;
                 promBloqueo[i-1] = daysCount[i] > 0 ? (sumB / daysCount[i]) : 0;
                 
-                // Agendamiento
                 let sumA = dataAgendamiento.filter(d => d.fecha.getDay() === i).length;
                 promAgendamiento[i-1] = daysCount[i] > 0 ? (sumA / daysCount[i]) : 0;
             }
 
-            // 5. Actualizar Gráficos Promedios
             chartPromedioBloqueo.data.datasets[0].data = promBloqueo;
             chartPromedioBloqueo.update();
 
             chartPromedioAgendamiento.data.datasets[0].data = promAgendamiento;
             chartPromedioAgendamiento.update();
-
-            // 6. Actualizar Tablas HTML
-            const labelsHtml = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'];
             
+            const labelsHtml = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'];
             let htmlBloqueo = '';
             let htmlAgendamiento = '';
 
@@ -554,13 +548,11 @@
             const estados = ['nueva', 'en proceso', 'detenida', 'finalizada'];
             const especialidades = ['Cardiología', 'Traumatología', 'General'];
             
-            // Usaremos fechas reales de los últimos 30 días
             for(let i=0; i<60; i++) {
                 const date = new Date();
                 date.setHours(12,0,0);
                 date.setDate(date.getDate() - Math.floor(Math.random() * 30));
                 
-                // Mezclar tipos
                 let nombreTipoMock = i % 2 === 0 
                     ? listadoBloqueo[Math.floor(Math.random() * listadoBloqueo.length)]
                     : listadoAgendamiento[Math.floor(Math.random() * listadoAgendamiento.length)];
@@ -571,12 +563,15 @@
                 const mm = String(date.getMonth() + 1).padStart(2, '0');
                 const dd = String(date.getDate()).padStart(2, '0');
 
+                // DATO CRÍTICO: Simulamos que la planilla inyecta horas locas al string
+                const fakeHours = ` ${Math.floor(Math.random()*23)}:${Math.floor(Math.random()*59)}:00`;
+
                 mock.push({
                     'ID': i + 1,
                     'Nombre carga': 'Lista Op. ' + (i+1),
                     'Nombre tipo': nombreTipoMock,
                     'tipo de carga': i % 3 === 0 ? '' : 'Manual',
-                    'Fecha carga': `${yy}-${mm}-${dd}`, 
+                    'Fecha carga': `${yy}-${mm}-${dd}${fakeHours}`, // La función de arriba ahora mata el "fakeHours"
                     'Avance': Math.floor(Math.random() * 100),
                     'Contactabilidad': Math.floor(Math.random() * 40) + 40,
                     'Efectividad': Math.floor(Math.random() * 30) + 20,
