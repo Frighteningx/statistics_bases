@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard Operacional - Contact Center (V5.1)</title>
+    <title>Dashboard Operacional - Contact Center (V5.2)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
@@ -91,7 +91,7 @@
     <section class="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-8 mb-8">
         <div class="card p-6 md:col-span-2">
             <div class="flex justify-between items-center mb-4">
-                <h3 class="text-lg font-bold text-gray-700 font-semibold">Cargas Totales por Fecha (Ignora Estado)</h3>
+                <h3 class="text-lg font-bold text-gray-700 font-semibold">Cargas Totales por Fecha (Puro)</h3>
                 <select id="chartGroupMode" class="filter-input text-xs w-auto py-1" onchange="processData()">
                     <option value="day">Por Día</option>
                     <option value="week">Por Semana</option>
@@ -156,7 +156,7 @@
 
     <section class="max-w-7xl mx-auto card overflow-hidden mb-12">
         <div class="p-6 border-b border-gray-100 flex justify-between items-center">
-            <h3 class="text-lg font-bold text-gray-700">Detalle de Bases (Afectado por Filtro de Estado)</h3>
+            <h3 class="text-lg font-bold text-gray-700">Detalle de Bases (Afectado por Filtros)</h3>
         </div>
         <div class="overflow-x-auto">
             <table class="w-full text-left">
@@ -210,10 +210,9 @@
             });
         }
 
-        // NUEVO PARCHE DRÁSTICO DE FECHA: Elimina totalmente la hora
+        // PARCHE DRÁSTICO DE FECHA: Elimina totalmente la hora
         function parseDateStrict(dateStr) {
             if (!dateStr) return new Date();
-            // Esto corta el string en el primer espacio o letra 'T', matando cualquier hora
             let fechaPura = dateStr.toString().trim().split(/[\sT]+/)[0];
             
             const parts = fechaPura.split(/[-/]/);
@@ -221,10 +220,9 @@
                 let y = parts[0].length === 4 ? parts[0] : parts[2];
                 let m = parts[0].length === 4 ? parts[1] : parts[1];
                 let d = parts[0].length === 4 ? parts[2] : parts[0];
-                return new Date(y, m - 1, d, 12, 0, 0); // Forzado al mediodía exacto
+                return new Date(y, m - 1, d, 12, 0, 0); 
             }
             
-            // Fallback en caso de formatos raros
             const d = new Date(fechaPura);
             if (!isNaN(d.getTime())) {
                 d.setHours(12, 0, 0, 0);
@@ -278,7 +276,7 @@
                     tipoCarga: tipoCarga,
                     nombreTipoReal: nombreTipoReal,
                     grupoCategoria: grupoCategoria,
-                    fecha: parseDateStrict(row['Fecha carga']), // Se usa el nuevo parser estricto
+                    fecha: parseDateStrict(row['Fecha carga']), 
                     cantidad: parseInt(row['cantidad de registros']) || 0,
                     avance: parseFloat(row['Avance']) || 0,
                     efectividad: parseFloat(row['Efectividad']) || 0,
@@ -316,28 +314,26 @@
             const endDate = endStr ? parseDateStrict(endStr) : null;
             if(endDate) endDate.setHours(23,59,59);
 
-            // DATA 1: EXCLUSIVA PARA GRÁFICOS (Ignora el filtro de Estado)
-            let dataParaGraficos = rawData.filter(row => {
-                const matchDate = (!startDate || row.fecha >= startDate) && (!endDate || row.fecha <= endDate);
+            // DATA 1: EXCLUSIVA PARA LÍNEA DE TIEMPO Y PROMEDIOS (Solo le afecta la fecha, dato puro)
+            let dataLineaTiempo = rawData.filter(row => {
+                return (!startDate || row.fecha >= startDate) && (!endDate || row.fecha <= endDate);
+            });
+
+            // DATA 2: PARA KPIs, TABLA Y GRÁFICO DE ESPECIALIDAD (Le afectan TODOS los demás filtros)
+            let dataFiltradaCompleta = dataLineaTiempo.filter(row => {
                 const matchCarga = fCarga === 'ALL' || row.tipoCarga === fCarga;
+                const matchEstado = fEstado === 'ALL' || row.estado === fEstado;
                 const matchEsp = fEsp === 'ALL' || row.especialidad === fEsp;
-                
-                // Nota: fEstado NO se evalúa aquí
-                return matchDate && matchCarga && matchEsp;
+                return matchCarga && matchEstado && matchEsp;
             });
 
-            // DATA 2: EXCLUSIVA PARA TABLA Y KPIs (Sí usa el filtro de Estado)
-            let dataParaTabla = dataParaGraficos.filter(row => {
-                return fEstado === 'ALL' || row.estado === fEstado;
-            });
+            dataFiltradaCompleta.sort((a, b) => a.prioridadPeso - b.prioridadPeso);
 
-            dataParaTabla.sort((a, b) => a.prioridadPeso - b.prioridadPeso);
-
-            updateDashboard(dataParaTabla, dataParaGraficos);
+            updateDashboard(dataFiltradaCompleta, dataLineaTiempo);
         }
 
-        function updateDashboard(dataTabla, dataGraficos) {
-            // KPIs Generales (Afectados por Estado)
+        function updateDashboard(dataTabla, dataTiempo) {
+            // KPIs Generales (Afectados por Todos los Filtros)
             const totalRegistros = dataTabla.reduce((sum, row) => sum + row.cantidad, 0);
             const avgEfectividad = dataTabla.length > 0 ? (dataTabla.reduce((sum, row) => sum + row.efectividad, 0) / dataTabla.length).toFixed(1) : 0;
             const avgContact = dataTabla.length > 0 ? (dataTabla.reduce((sum, row) => sum + row.contactabilidad, 0) / dataTabla.length).toFixed(1) : 0;
@@ -347,13 +343,13 @@
             document.getElementById('kpiAvgEfectividad').innerText = avgEfectividad + '%';
             document.getElementById('kpiAvgContact').innerText = avgContact + '%';
 
-            // Actualizar Gráficos Principales (NO afectados por Estado)
-            updateMainCharts(dataGraficos);
+            // Actualizar Gráficos Principales (Reciben la data separada)
+            updateMainCharts(dataTiempo, dataTabla);
 
-            // Actualizar Análisis Predictivo (NO afectados por Estado)
-            updatePromediosSemanales(dataGraficos);
+            // Actualizar Análisis Predictivo (Puros por Fecha)
+            updatePromediosSemanales(dataTiempo);
 
-            // Tabla de Detalle (Afectada por Estado)
+            // Tabla de Detalle (Afectada por Todos los Filtros)
             const tableBody = document.getElementById('tableBody');
             tableBody.innerHTML = '';
             
@@ -445,9 +441,10 @@
             return Math.ceil((((d - yearStart) / 86400000) + 1)/7);
         }
 
-        function updateMainCharts(data) {
+        function updateMainCharts(dataTiempo, dataTabla) {
             const groupMode = document.getElementById('chartGroupMode').value;
-            const chronologicalData = [...data].sort((a, b) => a.fecha - b.fecha);
+            // Usar dataTiempo para la línea de tiempo
+            const chronologicalData = [...dataTiempo].sort((a, b) => a.fecha - b.fecha);
             const timeDataMap = new Map();
             
             chronologicalData.forEach(row => {
@@ -469,8 +466,9 @@
             chartCargas.data.datasets[0].data = Array.from(timeDataMap.values());
             chartCargas.update();
 
+            // Usar dataTabla para las especialidades (obedece filtros)
             const espData = {};
-            data.forEach(row => espData[row.especialidad] = (espData[row.especialidad] || 0) + 1);
+            dataTabla.forEach(row => espData[row.especialidad] = (espData[row.especialidad] || 0) + 1);
 
             const sortedEsp = Object.entries(espData).sort((a, b) => b[1] - a[1]);
             chartEspecialidad.data.labels = sortedEsp.map(item => item[0]);
@@ -492,17 +490,18 @@
             return counts;
         }
 
-        function updatePromediosSemanales(data) {
-            if(data.length === 0) return;
+        function updatePromediosSemanales(dataTiempo) {
+            if(dataTiempo.length === 0) return;
 
-            const dates = data.map(d => d.fecha.getTime());
+            // Calcular en base a la data pura de tiempo
+            const dates = dataTiempo.map(d => d.fecha.getTime());
             const minDate = new Date(Math.min(...dates));
             const maxDate = new Date(Math.max(...dates));
 
             const daysCount = countWeekdaysInRange(minDate, maxDate);
 
-            const dataBloqueo = data.filter(d => d.grupoCategoria === 'Bloqueo');
-            const dataAgendamiento = data.filter(d => d.grupoCategoria === 'Agendamiento');
+            const dataBloqueo = dataTiempo.filter(d => d.grupoCategoria === 'Bloqueo');
+            const dataAgendamiento = dataTiempo.filter(d => d.grupoCategoria === 'Agendamiento');
 
             const promBloqueo = [0,0,0,0,0];
             const promAgendamiento = [0,0,0,0,0];
@@ -563,7 +562,6 @@
                 const mm = String(date.getMonth() + 1).padStart(2, '0');
                 const dd = String(date.getDate()).padStart(2, '0');
 
-                // DATO CRÍTICO: Simulamos que la planilla inyecta horas locas al string
                 const fakeHours = ` ${Math.floor(Math.random()*23)}:${Math.floor(Math.random()*59)}:00`;
 
                 mock.push({
@@ -571,7 +569,7 @@
                     'Nombre carga': 'Lista Op. ' + (i+1),
                     'Nombre tipo': nombreTipoMock,
                     'tipo de carga': i % 3 === 0 ? '' : 'Manual',
-                    'Fecha carga': `${yy}-${mm}-${dd}${fakeHours}`, // La función de arriba ahora mata el "fakeHours"
+                    'Fecha carga': `${yy}-${mm}-${dd}${fakeHours}`, 
                     'Avance': Math.floor(Math.random() * 100),
                     'Contactabilidad': Math.floor(Math.random() * 40) + 40,
                     'Efectividad': Math.floor(Math.random() * 30) + 20,
